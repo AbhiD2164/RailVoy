@@ -1,0 +1,13 @@
+trainType,baseFarePerKm,facilityMultiplier,reservationCharge
+Passenger,0.45,0.85,15
+Local,0.4,0.8,10
+Mail,0.55,1,20
+Express,0.65,1.05,25
+Superfast,0.75,1.15,30
+Shatabdi,1.1,1.3,40
+Rajdhani,1.2,1.4,50
+Duronto,1.15,1.35,45
+Vande Bharat,1.35,1.5,50
+Tejas,1.30,1.45,50
+Garib Rath,0.50,1.0,25
+Sachkhand,0.55,1.0,20

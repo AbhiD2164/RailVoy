@@ -1,0 +1,17 @@
+trainNo,trainName,trainType,source,destination
+12627,Karnataka Express,Superfast,NDLS,SBC
+12617,Mangala Lakshadweep Express,Superfast,NDLS,SBC
+11402,Supaul Pune Express,Express,SOU,PUNE
+12415,Indore New Delhi Express,Superfast,INDB,NDLS
+12227,Mumbai Central Indore Duronto,Duronto,MMCT,INDB
+22192,Jabalpur Indore Express,Superfast,JBP,INDB
+12920,Malwa Express,Superfast,INDB,NDLS
+12951,Mumbai New Delhi Rajdhani,Rajdhani,MMCT,NDLS
+12002,Bhopal New Delhi Shatabdi,Shatabdi,BPL,NDLS
+12124,Deccan Queen,Superfast,PUNE,MMCT
+12129,Azad Hind Express,Express,PUNE,SBC
+12810,Howrah Mumbai Mail,Mail,HWH,CSMT
+22436,Vande Bharat Express,Vande Bharat,NDLS,BSB
+82902,Tejas Express,Tejas,MMCT,ADI
+12715,Sachkhand Express,Sachkhand,NDLS,ASR
+12909,Garib Rath Express,Garib Rath,MMCT,NDLS

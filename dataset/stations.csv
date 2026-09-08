@@ -1,0 +1,43 @@
+stationId,stationName,stationCode,state
+ST001,New Delhi,NDLS,Delhi
+ST002,Mathura Junction,MTJ,Uttar Pradesh
+ST003,Agra Cantt,AGC,Uttar Pradesh
+ST004,Gwalior Junction,GWL,Madhya Pradesh
+ST005,Jhansi Junction,VGLJ,Uttar Pradesh
+ST006,Bina Junction,BINA,Madhya Pradesh
+ST007,Bhopal Junction,BPL,Madhya Pradesh
+ST008,Itarsi Junction,ET,Madhya Pradesh
+ST009,Khandwa Junction,KNW,Madhya Pradesh
+ST010,Bhusaval Junction,BSL,Maharashtra
+ST011,Manmad Junction,MMR,Maharashtra
+ST012,Daund Junction,DD,Maharashtra
+ST013,Pune Junction,PUNE,Maharashtra
+ST014,Solapur Junction,SUR,Maharashtra
+ST015,Wadi Junction,WADI,Karnataka
+ST016,Guntakal Junction,GTL,Andhra Pradesh
+ST017,Dharmavaram Junction,DMM,Andhra Pradesh
+ST018,KSR Bengaluru City,SBC,Karnataka
+ST019,Ahmedabad Junction,ADI,Gujarat
+ST020,Vadodara Junction,BRC,Gujarat
+ST021,Ratlam Junction,RTM,Madhya Pradesh
+ST022,Kota Junction,KOTA,Rajasthan
+ST023,Mumbai Central,MMCT,Maharashtra
+ST024,Surat,ST,Gujarat
+ST025,Jaipur Junction,JP,Rajasthan
+ST026,Kanpur Central,CNB,Uttar Pradesh
+ST027,Prayagraj Junction,PRYJ,Uttar Pradesh
+ST028,Varanasi Junction,BSB,Uttar Pradesh
+ST029,Patna Junction,PNBE,Bihar
+ST030,Saharsa Junction,SHC,Bihar
+ST031,Supaul,SOU,Bihar
+ST032,Jabalpur Junction,JBP,Madhya Pradesh
+ST033,Nagpur Junction,NGP,Maharashtra
+ST034,Raipur Junction,R,Chhattisgarh
+ST035,Gondia Junction,G,Maharashtra
+ST036,Chhatrapati Shivaji Maharaj Terminus,CSMT,Maharashtra
+ST037,Lucknow Charbagh,LKO,Uttar Pradesh
+ST038,Gorakhpur Junction,GKP,Uttar Pradesh
+ST039,Chandigarh,CDG,Chandigarh
+ST040,Amritsar Junction,ASR,Punjab
+ST041,Indore Junction,INDB,Madhya Pradesh
+ST042,Howrah Junction,HWH,West Bengal
