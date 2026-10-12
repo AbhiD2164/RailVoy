@@ -1,0 +1,90 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  RailVoy — Single docker-compose deployment
+#  Run: docker-compose up --build
+#  Access: http://localhost:3000 (frontend) | http://localhost:5000 (api)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: railvoy_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI AI Microservice ─────────────────────────────────────────────────
+  ai_service:
+    build:
+      context: ./ai_service
+      dockerfile: Dockerfile
+    container_name: railvoy_ai
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - AI_SERVICE_HOST=0.0.0.0
+      - AI_SERVICE_PORT=8000
+      - CORS_ORIGINS=http://localhost:5000,http://localhost:3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Express Backend API ────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: railvoy_backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      ai_service:
+        condition: service_healthy
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongo:27017/railvoy
+      - JWT_SECRET=${JWT_SECRET:-railvoy_super_secret_jwt_key_2026}
+      - FASTAPI_URL=http://ai_service:8000
+      - CORS_ORIGIN=http://localhost:3000
+      # Optional — set to enable Google Calendar festival surge tracking
+      # - GOOGLE_CALENDAR_API_KEY=your_key_here
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── React Frontend (served via Nginx) ─────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:5000
+    container_name: railvoy_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  mongo_data:
+    driver: local
