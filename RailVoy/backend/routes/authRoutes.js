@@ -487,12 +487,102 @@ router.post('/login', async (req, res) => {
       }
     }
 
+    // Seamless Cross-App SSO: If user is not found locally or local password check fails, verify with RailVoy-Accounts service (Port 4002)
+    if (!user) {
+      try {
+        const axios = require('axios');
+        const accRes = await axios.post('http://localhost:4002/api/accounts/authenticate-for-app', {
+          identifier: identifier || cleanMobile,
+          password,
+          appName: 'RailVoy Portal'
+        }, { timeout: 3500 });
+
+        if (accRes.data?.verified && accRes.data?.railwayUser) {
+          const verified = accRes.data.railwayUser;
+          const userEmail = (verified.email || '').toLowerCase();
+          const userMobile = verified.phone || cleanMobile || '';
+
+          if (!getIsFallback()) {
+            user = await User.findOne({ $or: [{ email: userEmail }, { railwayUserId: verified.railwayUserId }] });
+            if (!user) {
+              const dynBank = generateDynamicBankAccount(userMobile, userEmail);
+              const salt = await bcrypt.genSalt(10);
+              const passwordHash = await bcrypt.hash(password, salt);
+              user = new User({
+                name: verified.name,
+                email: userEmail,
+                passwordHash,
+                mobileNumber: userMobile,
+                railwayUserId: verified.railwayUserId,
+                role: 'passenger',
+                isVerified: true,
+                emailVerified: true,
+                mobileVerified: true,
+                bankAccountNo: dynBank.accountNo,
+                bankName: dynBank.bankName,
+                bankIfscCode: dynBank.bankIfscCode,
+                bankBalance: 85000,
+                externalAppProvider: 'RAILVOY_ACCOUNTS'
+              });
+              await user.save();
+            } else {
+              if (!user.railwayUserId) user.railwayUserId = verified.railwayUserId;
+              await user.save();
+            }
+          } else {
+            user = inMemoryUsers.find(u => u.email?.toLowerCase() === userEmail || u.railwayUserId === verified.railwayUserId);
+            if (!user) {
+              const dynBank = generateDynamicBankAccount(userMobile, userEmail);
+              user = {
+                _id: 'user_sso_' + Date.now(),
+                name: verified.name,
+                email: userEmail,
+                mobileNumber: userMobile,
+                railwayUserId: verified.railwayUserId,
+                role: 'passenger',
+                isVerified: true,
+                emailVerified: true,
+                mobileVerified: true,
+                bankAccountNo: dynBank.accountNo,
+                bankName: dynBank.bankName,
+                bankIfscCode: dynBank.bankIfscCode,
+                bankBalance: 85000
+              };
+              inMemoryUsers.push(user);
+            }
+          }
+        }
+      } catch (crossAuthErr) {
+        // Continue to standard error response below
+      }
+    }
+
     if (!user) return res.status(400).json({ error: 'Invalid login credentials' });
 
     if (password) {
       const isMatch = await bcrypt.compare(password, user.passwordHash);
       if (!isMatch && password !== 'admin123') {
-        return res.status(400).json({ error: 'Invalid login credentials' });
+        // Also check if updated password on RailVoy-Accounts matches
+        let crossMatch = false;
+        try {
+          const axios = require('axios');
+          const accCheck = await axios.post('http://localhost:4002/api/accounts/authenticate-for-app', {
+            identifier: user.email || user.railwayUserId,
+            password,
+            appName: 'RailVoy Portal'
+          }, { timeout: 2500 });
+          if (accCheck.data?.verified) {
+            crossMatch = true;
+            // Update local password hash to stay in sync
+            const salt = await bcrypt.genSalt(10);
+            user.passwordHash = await bcrypt.hash(password, salt);
+            if (!getIsFallback() && user.save) await user.save();
+          }
+        } catch (e) {}
+
+        if (!crossMatch) {
+          return res.status(400).json({ error: 'Invalid login credentials' });
+        }
       }
     } else if (!requireOtp) {
       return res.status(400).json({ error: 'Password or OTP required' });
@@ -1187,24 +1277,25 @@ router.post('/railway-account-login', async (req, res) => {
       return res.status(400).json({ error: 'Railway User ID and password are required' });
     }
 
-    const cleanId = String(railwayUserId).trim().toUpperCase();
+    const cleanId = String(railwayUserId).trim();
     let verifiedAccount = null;
 
     // 1. Attempt verification with external RailVoy Accounts service (Port 4002)
     try {
       const axios = require('axios');
       const response = await axios.post('http://localhost:4002/api/accounts/authenticate-for-app', {
+        identifier: cleanId,
         railwayUserId: cleanId,
         password,
         appName: 'RailVoy Main Booking'
-      }, { timeout: 3000 });
+      }, { timeout: 4000 });
 
       if (response.data?.verified && response.data?.railwayUser) {
         verifiedAccount = response.data.railwayUser;
       }
     } catch (apiErr) {
       // Local demo fallback if external service is offline or starting up
-      if (cleanId === 'RVACC-IN994821' && password === 'Railway@123') {
+      if (cleanId.toUpperCase() === 'RVACC-IN994821' && password === 'Railway@123') {
         verifiedAccount = {
           railwayUserId: 'RVACC-IN994821',
           name: 'Rohan Deshmukh',
@@ -1223,9 +1314,10 @@ router.post('/railway-account-login', async (req, res) => {
     // Find or create in RailVoy user database
     let user = null;
     const email = verifiedAccount.email.toLowerCase();
+    const cleanRId = (verifiedAccount.railwayUserId || cleanId).toUpperCase();
 
     if (!getIsFallback()) {
-      user = await User.findOne({ $or: [{ railwayUserId: cleanId }, { email }] });
+      user = await User.findOne({ $or: [{ railwayUserId: cleanRId }, { email }] });
       if (!user) {
         const { bankAccountNo, bankName, bankIfscCode } = generateDynamicBankAccount(verifiedAccount.phone, email);
         const salt = await bcrypt.genSalt(10);
@@ -1235,7 +1327,7 @@ router.post('/railway-account-login', async (req, res) => {
           email,
           passwordHash,
           mobileNumber: verifiedAccount.phone,
-          railwayUserId: cleanId,
+          railwayUserId: cleanRId,
           role: 'passenger',
           isVerified: true,
           emailVerified: true,
@@ -1248,18 +1340,18 @@ router.post('/railway-account-login', async (req, res) => {
         });
         await user.save();
       } else if (!user.railwayUserId) {
-        user.railwayUserId = cleanId;
+        user.railwayUserId = cleanRId;
         await user.save();
       }
     } else {
-      user = inMemoryUsers.find(u => u.railwayUserId === cleanId || u.email.toLowerCase() === email);
+      user = inMemoryUsers.find(u => u.railwayUserId === cleanRId || u.email?.toLowerCase() === email);
       if (!user) {
         const { bankAccountNo, bankName, bankIfscCode } = generateDynamicBankAccount(verifiedAccount.phone, email);
         user = {
           _id: 'user_rvacc_' + Date.now(),
           name: verifiedAccount.name,
           email,
-          railwayUserId: cleanId,
+          railwayUserId: cleanRId,
           mobileNumber: verifiedAccount.phone,
           role: 'passenger',
           isVerified: true,

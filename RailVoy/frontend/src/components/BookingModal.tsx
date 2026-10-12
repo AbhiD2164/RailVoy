@@ -14,6 +14,7 @@ interface BookingModalProps {
   onClose: () => void;
   onProceedToPayment: (bookingData: any) => void;
   userEmail: string;
+  travelDate?: string;
 }
 
 interface QuoteResponse {
@@ -53,10 +54,23 @@ interface QuoteResponse {
 type MealChoice = 'Veg' | 'Non-Veg' | 'No Food';
 
 export const BookingModal: React.FC<BookingModalProps> = ({
-  train, isOpen, onClose, onProceedToPayment, userEmail
+  train, isOpen, onClose, onProceedToPayment, userEmail, travelDate
 }) => {
-  // Wizard Navigation Step: 1 = Quota, 2 = Passenger Details, 3 = Catering, 4 = Review & Price Reveal
+  // Wizard Navigation Step: 1 = Date & Quota, 2 = Passenger Details, 3 = Catering, 4 = Review & Confirm
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+
+  // Travel Date State (User-confirmed date of journey)
+  const [journeyDate, setJourneyDate] = useState<string>(() => {
+    return travelDate || (train as any)?.travelDate || new Date().toISOString().split('T')[0];
+  });
+
+  useEffect(() => {
+    if (travelDate) {
+      setJourneyDate(travelDate);
+    } else if ((train as any)?.travelDate) {
+      setJourneyDate((train as any).travelDate);
+    }
+  }, [travelDate, train]);
 
   const travelClass = useMemo(() => (train as any)?.travelClass?.toUpperCase() || '3A', [train]);
   const isGS = travelClass === 'GS';
@@ -267,7 +281,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         trainType: train.trainType,
         travelClass,
         distanceKm: (train as any).distanceKm || 450,
-        travelDate: train.travelDate || new Date().toISOString().split('T')[0],
+        travelDate: journeyDate,
         passengerCount: passengers.length,
         mealCategory: mappedMeal,
         quota,
@@ -288,7 +302,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     } finally {
       setQuoting(false);
     }
-  }, [train, travelClass, passengers.length, foodChoice, quota, couponCode, isGS, trainHasCatering]);
+  }, [train, travelClass, passengers.length, foodChoice, quota, couponCode, isGS, trainHasCatering, journeyDate]);
 
   // Trigger calculation when entering Step 4
   useEffect(() => {
@@ -404,7 +418,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       toStation: train?.toStation,
       departureTime: train?.departureTime,
       arrivalTime: train?.arrivalTime,
-      travelDate: train?.travelDate || new Date().toISOString().split('T')[0],
+      travelDate: journeyDate,
       travelClass,
       quota,
       passengers,
@@ -519,9 +533,36 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {currentStep === 1 && (
               <div className="space-y-5 animate-in fade-in duration-200">
                 <div className="border-b border-slate-100 pb-3">
-                  <h4 className="text-base font-black text-slate-900">Step 1: Select Reservation Quota</h4>
+                  <h4 className="text-base font-black text-slate-900">Step 1: Journey Date &amp; Reservation Quota</h4>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Live system intelligence evaluates Tatkal quota applicability based on coach vacancy and booking demand.
+                    Confirm your date of journey and select your preferred passenger quota.
+                  </p>
+                </div>
+
+                {/* Journey Date Selection */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 uppercase flex items-center space-x-1.5">
+                      <Calendar className="w-4 h-4 text-sky-600" />
+                      <span>Date of Journey:</span>
+                    </label>
+                    <span className="text-[10px] font-bold text-sky-700 bg-sky-100 px-2.5 py-0.5 rounded-full">
+                      Required for Ticket Generation
+                    </span>
+                  </div>
+                  <input
+                    type="date"
+                    required
+                    min={new Date().toISOString().split('T')[0]}
+                    value={journeyDate}
+                    onChange={e => {
+                      setJourneyDate(e.target.value);
+                      setQuoteData(null);
+                    }}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 outline-none focus:border-sky-500 cursor-pointer shadow-2xs"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Departure scheduled for: <span className="font-semibold text-slate-800">{new Date(journeyDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span> at <span className="font-mono font-bold text-sky-700">{train?.departureTime}</span>
                   </p>
                 </div>
 
@@ -841,7 +882,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     onClick={goToStep4}
                     className="px-7 py-3 bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-sm rounded-xl shadow-md flex items-center space-x-2 transition-all hover:scale-105 cursor-pointer"
                   >
-                    <span>Next: Review &amp; Calculate Fare</span>
+                    <span>Next: Review &amp; Confirm Booking</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -938,17 +979,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   </div>
                 </div>
 
-                {/* CONSOLIDATED PRICE REVEAL SECTION (SHOWN ONLY AT THIS VERIFICATION STEP) */}
+                {/* CONSOLIDATED PRICE REVEAL SECTION */}
                 <div className="bg-sky-50/70 rounded-2xl border-2 border-sky-300 p-5 space-y-3">
                   <div className="flex items-center justify-between border-b border-sky-200 pb-3">
                     <span className="text-xs font-black text-slate-900 uppercase tracking-wide flex items-center space-x-2">
                       <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                      <span>Verified Guaranteed Price Breakdown</span>
+                      <span>Verified Booking Fare</span>
                     </span>
                     {quoting && (
                       <span className="text-xs text-sky-700 font-bold animate-pulse flex items-center space-x-1">
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Calculating live tariff...</span>
+                        <span>Verifying fare...</span>
                       </span>
                     )}
                   </div>
@@ -966,53 +1007,45 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     </div>
                   ) : quoteData ? (
                     <div className="space-y-2 text-xs text-slate-700">
-                      <div className="flex justify-between">
-                        <span>Base Railway Tariff ({passengers.length} Passenger{passengers.length > 1 ? 's' : ''})</span>
-                        <span className="font-bold text-slate-900">
-                          ₹{((quoteData.perPassenger.baseFare || 650) * passengers.length).toLocaleString('en-IN')}
+                      <div className="flex justify-between items-center py-1">
+                        <div>
+                          <span className="font-bold text-slate-900 block">
+                            Passenger Ticket Fare ({passengers.length} Passenger{passengers.length > 1 ? 's' : ''})
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            Class: {travelClass} &bull; Quota: {quota} &bull; Journey Date: {journeyDate}
+                          </span>
+                        </div>
+                        <span className="font-bold text-slate-900 text-sm font-mono">
+                          ₹{((quoteData.perPassenger.dynamicFare || quoteData.perPassenger.baseFare || 650) * passengers.length).toLocaleString('en-IN')}
                         </span>
                       </div>
 
-                      {/* Demand / Vacancy Surge Buffer */}
-                      {(quoteData.perPassenger.dynamicFare > quoteData.perPassenger.baseFare) && (
-                        <div className="flex justify-between text-amber-800">
-                          <span>Route Demand &amp; Quota Adjustment</span>
-                          <span className="font-bold">
-                            +₹{(((quoteData.perPassenger.dynamicFare || 0) - (quoteData.perPassenger.baseFare || 0)) * passengers.length).toLocaleString('en-IN')}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Catering Charge */}
+                      {/* Catering Charge (only if ordered) */}
                       {foodChoice !== 'No Food' && !isComplimentaryMeal && (quoteData.mealPricePerPassenger || 0) > 0 && (
-                        <div className="flex justify-between">
-                          <span>Onboard Catering ({foodChoice} x {passengers.length})</span>
-                          <span className="font-bold text-slate-900">
+                        <div className="flex justify-between py-1 border-t border-sky-100 items-center">
+                          <div>
+                            <span className="font-semibold text-slate-800 block">Onboard Catering</span>
+                            <span className="text-[11px] text-slate-500">{foodChoice} ({passengers.length} meal{passengers.length > 1 ? 's' : ''})</span>
+                          </div>
+                          <span className="font-bold text-slate-900 font-mono">
                             +₹{((quoteData.mealPricePerPassenger || 0) * passengers.length).toLocaleString('en-IN')}
                           </span>
                         </div>
                       )}
 
-                      {/* Tatkal Surcharge */}
-                      {quota === 'TATKAL' && (
-                        <div className="flex justify-between text-amber-800 font-bold">
-                          <span>Tatkal Emergency Reservation Quota Surcharge</span>
-                          <span>+₹{(150 * passengers.length).toLocaleString('en-IN')}</span>
-                        </div>
-                      )}
-
                       {/* Voucher Discount */}
                       {discountAmount > 0 && (
-                        <div className="flex justify-between text-emerald-700 font-bold">
-                          <span>Promotional Voucher ({couponCode})</span>
-                          <span>-₹{discountAmount.toLocaleString('en-IN')}</span>
+                        <div className="flex justify-between py-1 border-t border-sky-100 text-emerald-700 font-bold items-center">
+                          <span>Promotional Voucher Discount ({couponCode})</span>
+                          <span className="font-mono">-₹{discountAmount.toLocaleString('en-IN')}</span>
                         </div>
                       )}
 
                       <div className="pt-3 border-t border-sky-200 flex justify-between items-center">
                         <div>
-                          <span className="text-sm font-black text-slate-900 block">Total Verified Amount</span>
-                          <span className="text-[11px] text-slate-500">Includes all taxes, quota, and catering fees</span>
+                          <span className="text-sm font-black text-slate-900 block">Total Payable Amount</span>
+                          <span className="text-[11px] text-slate-500">All inclusive of taxes and reservations</span>
                         </div>
                         <span className="text-3xl font-black text-sky-800 font-mono">
                           ₹{payableTotal.toLocaleString('en-IN')}

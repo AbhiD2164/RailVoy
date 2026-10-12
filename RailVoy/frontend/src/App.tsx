@@ -189,13 +189,19 @@ export const App: React.FC = () => {
       }
     }
 
-    // 2. Time Slot filter
+    // 2. Time Slot filter (Includes delayed trains still running in slot, excludes trains delayed past slot)
     if (selectedTimeSlot !== 'all') {
-      const hour = parseInt((train.departureTime || '00:00').split(':')[0], 10);
-      if (selectedTimeSlot === 'early-morning' && (hour < 0 || hour >= 6)) return false;
-      if (selectedTimeSlot === 'morning' && (hour < 6 || hour >= 12)) return false;
-      if (selectedTimeSlot === 'afternoon' && (hour < 12 || hour >= 18)) return false;
-      if (selectedTimeSlot === 'night' && hour < 18) return false;
+      const [schedH, schedM] = (train.departureTime || '00:00').split(':').map(Number);
+      const scheduledMinutes = (schedH || 0) * 60 + (schedM || 0);
+      const delayMins = Number(train.currentDelayMinutes || (train as any).delayMinutes || (train as any).delay || 0);
+      // Effective actual departure time accounting for train delays
+      const effectiveMinutes = (scheduledMinutes + delayMins) % (24 * 60);
+      const effectiveHour = Math.floor(effectiveMinutes / 60);
+
+      if (selectedTimeSlot === 'early-morning' && (effectiveHour < 0 || effectiveHour >= 6)) return false;
+      if (selectedTimeSlot === 'morning' && (effectiveHour < 6 || effectiveHour >= 12)) return false;
+      if (selectedTimeSlot === 'afternoon' && (effectiveHour < 12 || effectiveHour >= 18)) return false;
+      if (selectedTimeSlot === 'night' && (effectiveHour < 18 || effectiveHour >= 24)) return false;
     }
 
     return true;
@@ -564,6 +570,7 @@ export const App: React.FC = () => {
         onClose={() => setIsBookingModalOpen(false)}
         onProceedToPayment={handleProceedToPayment}
         userEmail={user?.email || ''}
+        travelDate={searchDate}
       />
 
       <PaymentModal

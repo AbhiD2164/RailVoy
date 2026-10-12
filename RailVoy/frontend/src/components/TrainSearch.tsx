@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapPin, Calendar, Train, ArrowRightLeft, Sparkles, Filter, Search, ShieldCheck } from 'lucide-react';
+import { MapPin, Calendar, Train, ArrowRightLeft, Sparkles, Filter, Search, ShieldCheck, Clock } from 'lucide-react';
 import { Station } from '../types';
 
 interface TrainSearchProps {
@@ -272,6 +272,48 @@ export const TrainSearch: React.FC<TrainSearchProps> = ({
 
           </div>
           </>}
+
+          {/* Time Window Preference */}
+          <div className="bg-slate-50/90 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+                <Clock className="w-3.5 h-3.5 text-sky-600" />
+                <span>Preferred Departure Time Window:</span>
+              </span>
+              <span className="text-[11px] text-slate-500 font-medium">
+                Live filtering includes delayed trains running in slot
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {[
+                { id: 'all', label: 'All Times', sub: '24 Hours' },
+                { id: 'early-morning', label: 'Early Morning', sub: '00:00 – 06:00' },
+                { id: 'morning', label: 'Morning', sub: '06:00 – 12:00' },
+                { id: 'afternoon', label: 'Afternoon', sub: '12:00 – 18:00' },
+                { id: 'night', label: 'Night', sub: '18:00 – 24:00' }
+              ].map(slot => {
+                const isSelected = (selectedTimeSlot || 'all') === slot.id;
+                return (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    onClick={() => onSelectTimeSlot && onSelectTimeSlot(slot.id)}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      isSelected
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs font-bold leading-tight">{slot.label}</div>
+                    <div className={`text-[10px] mt-0.5 ${isSelected ? 'text-sky-100' : 'text-slate-400'}`}>
+                      {slot.sub}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {/* Second Row: Class selection & Search CTA */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">

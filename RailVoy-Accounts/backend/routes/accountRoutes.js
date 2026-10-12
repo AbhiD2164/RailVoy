@@ -287,15 +287,51 @@ router.get('/verify-id', (req, res) => {
 // 4. Authenticate directly for external apps (RailVoy SSO check)
 router.post('/authenticate-for-app', async (req, res) => {
   try {
-    const { railwayUserId, password, appName } = req.body;
-    if (!railwayUserId || !password) {
-      return res.status(400).json({ error: 'Railway User ID and password required' });
+    const { railwayUserId, identifier, email, phone, password, appName } = req.body;
+    const lookupId = String(railwayUserId || identifier || email || phone || '').trim();
+    if (!lookupId || !password) {
+      return res.status(400).json({ error: 'Railway User ID / Email / Phone and password required' });
     }
 
-    const clean = String(railwayUserId).trim().toUpperCase();
-    const acc = accountsMap.get(clean);
+    const cleanUpper = lookupId.toUpperCase();
+    const cleanLower = lookupId.toLowerCase();
+    const cleanDigits = lookupId.replace(/\D/g, '');
+
+    // Try in-memory first
+    let acc = accountsMap.get(cleanUpper);
     if (!acc) {
-      return res.status(404).json({ error: 'Railway User ID is not registered' });
+      for (const a of accountsMap.values()) {
+        if (
+          (a.railwayUserId && a.railwayUserId.toUpperCase() === cleanUpper) ||
+          (a.email && a.email.toLowerCase() === cleanLower) ||
+          (a.phone && cleanDigits && a.phone.replace(/\D/g, '') === cleanDigits)
+        ) {
+          acc = a;
+          break;
+        }
+      }
+    }
+
+    // If still not found, reload disk store to ensure fresh sync with multi-process changes
+    if (!acc) {
+      loadData();
+      acc = accountsMap.get(cleanUpper);
+      if (!acc) {
+        for (const a of accountsMap.values()) {
+          if (
+            (a.railwayUserId && a.railwayUserId.toUpperCase() === cleanUpper) ||
+            (a.email && a.email.toLowerCase() === cleanLower) ||
+            (a.phone && cleanDigits && a.phone.replace(/\D/g, '') === cleanDigits)
+          ) {
+            acc = a;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!acc) {
+      return res.status(404).json({ error: 'Railway Account not found with the provided credentials' });
     }
 
     const isMatch = await bcrypt.compare(password, acc.passwordHash);
@@ -303,7 +339,8 @@ router.post('/authenticate-for-app', async (req, res) => {
       return res.status(401).json({ error: 'Invalid password for this Railway Account' });
     }
 
-    if (appName && !acc.linkedApps.includes(appName)) {
+    if (appName && (!acc.linkedApps || !acc.linkedApps.includes(appName))) {
+      if (!acc.linkedApps) acc.linkedApps = [];
       acc.linkedApps.push(appName);
       saveData();
     }
@@ -321,6 +358,7 @@ router.post('/authenticate-for-app', async (req, res) => {
       }
     });
   } catch (err) {
+    console.error('[RailVoy Accounts] authenticate-for-app error:', err);
     res.status(500).json({ error: 'Verification service error' });
   }
 });
