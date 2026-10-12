@@ -1,0 +1,54 @@
+[
+  {
+    "railwayUserId": "RVACC-IN994821",
+    "name": "Rohan Deshmukh",
+    "email": "rohan.railway@gmail.com",
+    "phone": "9820112233",
+    "passwordHash": "$2b$10$tC.VCRwADRGfdEV37Ujkc.vS9X.0Yy5nxnIZ1pFfgTTTmht5ppTIS",
+    "gender": "M",
+    "dob": "1994-06-15",
+    "address": "B-402, Central Railway Staff Enclave, Mumbai",
+    "aadhaarLast4": "8842",
+    "linkedApps": [
+      "RailVoy Portal",
+      "Central Rake Reservation",
+      "NTES Terminal"
+    ],
+    "alerts": [
+      {
+        "id": "ALT_INIT_01",
+        "type": "WELCOME",
+        "title": "Railway Identity Active",
+        "message": "Welcome to Indian Railways Universal Passenger Registry. Your account is active for 7-day persistent SSO.",
+        "createdAt": "2026-10-10T11:50:02.030Z"
+      }
+    ],
+    "createdAt": "2026-10-10T11:50:02.030Z",
+    "isActive": true
+  },
+  {
+    "railwayUserId": "RVACC-C3ADBA9D",
+    "name": "Abhinav Abhishek Dwivedi",
+    "email": "abhinavdwivedi2164@gmail.com",
+    "phone": "9021655211",
+    "passwordHash": "$2b$10$4JvaYmaImhUPQ9SEwszgT.eeSvDXWpGGKhJM7pmaXgcZdt73B9Tvq",
+    "gender": "M",
+    "dob": "2004-06-21",
+    "address": "Dharmaraj Chow, Akurdi, Pune, 410035",
+    "aadhaarLast4": "1795",
+    "linkedApps": [
+      "RailVoy Portal"
+    ],
+    "alerts": [
+      {
+        "id": "ALT_1791633168636",
+        "type": "REGISTRATION",
+        "title": "Railway Identity Issued",
+        "message": "Your universal Railway User ID RVACC-C3ADBA9D has been generated. Use it across RailVoy and partner platforms.",
+        "createdAt": "2026-10-10T11:52:48.636Z"
+      }
+    ],
+    "createdAt": "2026-10-10T11:52:48.636Z",
+    "isActive": true
+  }
+]

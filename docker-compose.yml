@@ -1,0 +1,114 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RailVoy Standard Multi-Container Production Topology
+# Integrates Node.js Express, Python FastAPI (Swagger UI at :8000/docs), MongoDB,
+# RailVoy-Pay, RailVoy-Accounts, and Frontend Web Interfaces
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: railvoy-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - railvoy-net
+
+  railvoy-backend:
+    build:
+      context: ./RailVoy/backend
+      dockerfile: Dockerfile
+    container_name: railvoy-api
+    restart: unless-stopped
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/railvoy
+      FASTAPI_URL: http://railvoy-ai:8000
+      RAILVOY_PAY_URL: http://railvoy-pay:4001
+      RAILVOY_ACCOUNTS_URL: http://railvoy-accounts:4002
+      CORS_ORIGIN: "*"
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongo
+      - railvoy-ai
+    networks:
+      - railvoy-net
+
+  railvoy-ai:
+    build:
+      context: ./RailVoy/ai_service
+      dockerfile: Dockerfile
+    container_name: railvoy-ai
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    networks:
+      - railvoy-net
+
+  railvoy-pay:
+    build:
+      context: ./RailVoy-Pay/backend
+      dockerfile: Dockerfile
+    container_name: railvoy-pay-service
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    networks:
+      - railvoy-net
+
+  railvoy-accounts:
+    build:
+      context: ./RailVoy-Accounts/backend
+      dockerfile: Dockerfile
+    container_name: railvoy-accounts-service
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    networks:
+      - railvoy-net
+
+  railvoy-frontend:
+    build:
+      context: ./RailVoy/frontend
+      dockerfile: Dockerfile
+    container_name: railvoy-web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - railvoy-backend
+    networks:
+      - railvoy-net
+
+  railvoy-pay-frontend:
+    build:
+      context: ./RailVoy-Pay/frontend
+      dockerfile: Dockerfile
+    container_name: railvoy-pay-web
+    restart: unless-stopped
+    ports:
+      - "5174:80"
+    networks:
+      - railvoy-net
+
+  railvoy-accounts-frontend:
+    build:
+      context: ./RailVoy-Accounts/frontend
+      dockerfile: Dockerfile
+    container_name: railvoy-accounts-web
+    restart: unless-stopped
+    ports:
+      - "5175:80"
+    networks:
+      - railvoy-net
+
+networks:
+  railvoy-net:
+    driver: bridge
+
+volumes:
+  mongo-data:

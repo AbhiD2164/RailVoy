@@ -1,0 +1,26 @@
+[
+  {
+    "userId": "RVPAY-DEMO1001",
+    "name": "Priya Sharma",
+    "phone": "9876543210",
+    "upiId": "priya@railvoy",
+    "mpinHash": "$2b$10$yzFWXJSKL3iCHJLkI99Jt.UP9DR.GJhxUX1Oo7JHPusI050fqHUhG",
+    "balance": 85000,
+    "bankName": "State Bank of India",
+    "accountLast4": "4321",
+    "isActive": true,
+    "createdAt": "2026-10-10T11:49:19.830Z"
+  },
+  {
+    "userId": "RVPAY-40B69A49",
+    "name": "Abhinav Dwivedi",
+    "phone": "9021655211",
+    "upiId": "9021655211@railvoy",
+    "mpinHash": "$2b$10$a8VNcIH6DjJxWvS86Cw1DOLg5B03hdCbhcA.XChQ/ThwayJNdM8gG",
+    "balance": 76419,
+    "bankName": "State Bank of India",
+    "accountLast4": "5211",
+    "isActive": true,
+    "createdAt": "2026-10-10T11:51:24.786Z"
+  }
+]

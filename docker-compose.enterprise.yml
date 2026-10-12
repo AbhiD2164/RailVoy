@@ -1,0 +1,174 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RailVoy Enterprise — Production & Academic Docker Compose Grid
+# Includes: Redis (Locks/Cache), RabbitMQ (Event Broker), MongoDB, 
+#           FastAPI (AI), Main Reservation, Pay, Accounts & Ticket Worker
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ─── 1. DISTRIBUTED DATA & BROKER INFRASTRUCTURE ───────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: railvoy-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-enterprise-data:/data/db
+    networks:
+      - railvoy-enterprise-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: railvoy-redis
+    restart: unless-stopped
+    command: redis-server --requirepass railvoy_redis_secret_2026 --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-enterprise-data:/data
+    networks:
+      - railvoy-enterprise-net
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: railvoy-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: railvoy_admin
+      RABBITMQ_DEFAULT_PASS: railvoy_queue_2026
+    ports:
+      - "5672:5672"     # AMQP Broker
+      - "15672:15672"   # Management Web Dashboard (http://localhost:15672)
+    volumes:
+      - rabbitmq-enterprise-data:/var/lib/rabbitmq
+    networks:
+      - railvoy-enterprise-net
+
+  # ─── 2. MICROSERVICES BACKEND ───────────────────────────────────────────────
+  railvoy-backend:
+    build:
+      context: ./RailVoy/backend
+      dockerfile: Dockerfile
+    container_name: railvoy-main-api
+    restart: unless-stopped
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/railvoy
+      REDIS_URL: redis://:railvoy_redis_secret_2026@redis:6379
+      RABBITMQ_URL: amqp://railvoy_admin:railvoy_queue_2026@rabbitmq:5672
+      RAILVOY_PAY_URL: http://railvoy-pay:4001
+      RAILVOY_ACCOUNTS_URL: http://railvoy-accounts:4002
+      FASTAPI_URL: http://railvoy-ai:8000
+      CORS_ORIGIN: "*"
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongo
+      - redis
+      - rabbitmq
+    networks:
+      - railvoy-enterprise-net
+
+  railvoy-pay:
+    build:
+      context: ./RailVoy-Pay/backend
+      dockerfile: Dockerfile
+    container_name: railvoy-pay-api
+    restart: unless-stopped
+    environment:
+      PORT: 4001
+      NODE_ENV: production
+      CORS_ORIGIN: "*"
+    ports:
+      - "4001:4001"
+    networks:
+      - railvoy-enterprise-net
+
+  railvoy-accounts:
+    build:
+      context: ./RailVoy-Accounts/backend
+      dockerfile: Dockerfile
+    container_name: railvoy-accounts-api
+    restart: unless-stopped
+    environment:
+      PORT: 4002
+      NODE_ENV: production
+      CORS_ORIGIN: "*"
+    ports:
+      - "4002:4002"
+    networks:
+      - railvoy-enterprise-net
+
+  railvoy-ai:
+    build:
+      context: ./RailVoy/ai_service
+      dockerfile: Dockerfile
+    container_name: railvoy-ai-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    networks:
+      - railvoy-enterprise-net
+
+  # ─── 3. ASYNCHRONOUS BACKGROUND WORKER FLEET ───────────────────────────────
+  ticket-worker:
+    build:
+      context: ./RailVoy/backend
+      dockerfile: Dockerfile
+    container_name: railvoy-ticket-worker
+    command: node workers/ticketWorker.js
+    restart: unless-stopped
+    environment:
+      RABBITMQ_URL: amqp://railvoy_admin:railvoy_queue_2026@rabbitmq:5672
+      MONGO_URI: mongodb://mongo:27017/railvoy
+    depends_on:
+      - rabbitmq
+      - mongo
+    networks:
+      - railvoy-enterprise-net
+
+  # ─── 4. WEB FRONTEND CLIENTS ───────────────────────────────────────────────
+  railvoy-frontend:
+    build:
+      context: ./RailVoy/frontend
+      dockerfile: Dockerfile
+    container_name: railvoy-main-web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - railvoy-backend
+    networks:
+      - railvoy-enterprise-net
+
+  railvoy-pay-frontend:
+    build:
+      context: ./RailVoy-Pay/frontend
+      dockerfile: Dockerfile
+    container_name: railvoy-pay-web
+    restart: unless-stopped
+    ports:
+      - "5174:80"
+    networks:
+      - railvoy-enterprise-net
+
+  railvoy-accounts-frontend:
+    build:
+      context: ./RailVoy-Accounts/frontend
+      dockerfile: Dockerfile
+    container_name: railvoy-accounts-web
+    restart: unless-stopped
+    ports:
+      - "5175:80"
+    networks:
+      - railvoy-enterprise-net
+
+networks:
+  railvoy-enterprise-net:
+    driver: bridge
+
+volumes:
+  mongo-enterprise-data:
+  redis-enterprise-data:
+  rabbitmq-enterprise-data:
