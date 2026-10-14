@@ -4,6 +4,7 @@ const { getIsFallback } = require('../config/db');
 const Station = require('../models/Station');
 const Train = require('../models/Train');
 const { predictWaitlist, calculateDynamicFare, getDelayReplanning } = require('../services/aiProxyService');
+const { calculateFare } = require('../services/fareService');
 
 // Seed cache store for dataset fallback
 let stationsCache = [];
@@ -149,11 +150,37 @@ router.get('/search', async (req, res) => {
           distanceKm,
           bookingCount: bookedSeatsForClass,
           occupancyRate: currentOccupancy,
-          travelDate: date || '2026-08-25',
+          travelDate: date || new Date().toISOString().split('T')[0],
           mealCategory: 'No Meal',
           departureTime: fromStop.departure || '08:00',
           arrivalTime: toStop.arrival || '18:00'
         });
+
+        // Pre-compute festival-inclusive dynamic ticket price for each travel class
+        const searchDate = date || new Date().toISOString().split('T')[0];
+        const fareByClass = {};
+        const availableClassList = ['1A', '2A', '3A', '3E', 'SL', 'CC', 'EC', 'GS'];
+        for (const cls of availableClassList) {
+          try {
+            const classFareResult = calculateFare({
+              trainNo: train.trainNo,
+              trainName: train.trainName,
+              trainType: train.trainType || 'Superfast',
+              travelClass: cls,
+              distanceKm,
+              occupancyRate: currentOccupancy,
+              waitlistPosition: (cls === normalizedClass) ? waitlistPosition : 0,
+              travelDate: searchDate,
+              mealCategory: 'No Meal',
+              departureTime: fromStop.departure || '08:00',
+              arrivalTime: toStop.arrival || '18:00',
+              quota: 'GENERAL'
+            });
+            fareByClass[cls] = classFareResult.finalFare;
+          } catch (e) {
+            fareByClass[cls] = fareInfo.finalFare;
+          }
+        }
 
         matchingTrains.push({
           trainNo: train.trainNo,
@@ -171,11 +198,12 @@ router.get('/search', async (req, res) => {
           waitlistPosition,
           confirmationProbability: aiWaitlist.confirmationProbability,
           travelClass: normalizedClass,
-          travelDate: date || new Date().toISOString().split('T')[0],
+          travelDate: searchDate,
           fare: {
-            finalFare: fareInfo.finalFare,
+            finalFare: fareByClass[normalizedClass] || fareInfo.finalFare,
             mealPrice: fareInfo.mealPrice
           },
+          fareByClass,
           currentDelayMinutes: train.currentDelayMinutes || 0,
           coachComposition: train.coachComposition || ['ENG', 'GS', 'S1', 'S2', 'B1', 'B2', 'B3', 'AB1', 'A1', 'HA1', 'H1', 'PC', 'GS'],
           cateringTier: train.cateringTier || 'standard',
@@ -394,8 +422,8 @@ router.get('/station/:stationCode/live-board', async (req, res) => {
     const { stationCode } = req.params;
     const cleanCode = String(stationCode || '').trim().toUpperCase();
 
-    if (!cleanCode || !/^[A-Z]{3,6}$/.test(cleanCode)) {
-      return res.status(400).json({ error: 'A valid station code is required, e.g. NDLS or SBC.' });
+    if (!cleanCode || !/^[A-Z]{2,6}$/.test(cleanCode)) {
+      return res.status(400).json({ error: 'A valid station code is required, e.g. NDLS, SBC, BPL, INDB.' });
     }
 
     let allTrains = trainsCache;
@@ -403,23 +431,44 @@ router.get('/station/:stationCode/live-board', async (req, res) => {
       allTrains = await Train.find();
     }
 
+    // Helper: add delay minutes to HH:MM time string
+    const addMinutesToTime = (timeStr, minsToAdd) => {
+      if (!timeStr || !timeStr.includes(':')) return timeStr || '—';
+      const [h, m] = timeStr.split(':').map(Number);
+      const totalMins = (h * 60 + m + (minsToAdd || 0) + 1440) % 1440;
+      const newH = Math.floor(totalMins / 60);
+      const newM = totalMins % 60;
+      return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+    };
+
     const stationTrains = [];
     for (const train of allTrains) {
       const stop = (train.stops || []).find(s => s.stationCode === cleanCode);
       if (stop) {
         const delay = train.currentDelayMinutes || 0;
+        const isOriginating = train.source === cleanCode;
+        const isTerminating = train.destination === cleanCode;
+        const expArr = stop.arrival ? addMinutesToTime(stop.arrival, delay) : '—';
+        const expDep = stop.departure ? addMinutesToTime(stop.departure, delay) : '—';
+
         stationTrains.push({
           trainNo: train.trainNo,
           trainName: train.trainName,
           trainType: train.trainType,
           source: train.source,
           destination: train.destination,
-          scheduledArrival: stop.arrival,
-          scheduledDeparture: stop.departure,
+          scheduledArrival: stop.arrival || '—',
+          scheduledDeparture: stop.departure || '—',
+          expectedArrival: expArr,
+          expectedDeparture: expDep,
+          expectedTime: isTerminating ? expArr : expDep,
+          isOriginating,
+          isTerminating,
           platformNo: (stop.sequence % 4) + 1,
           delayMinutes: delay,
           status: delay === 0 ? 'ON TIME' : `DELAYED ${delay}m`,
-          expectedTime: stop.departure
+          statusType: delay === 0 ? 'ontime' : delay > 30 ? 'severe' : 'minor',
+          currentLocation: train.status || (delay === 0 ? 'Running on schedule' : `Delayed by ${delay}m approaching ${cleanCode}`)
         });
       }
     }

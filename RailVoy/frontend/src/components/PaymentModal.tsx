@@ -103,38 +103,44 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setStep('processing');
     setProcessingStep(1);
 
-    const stepInterval = setInterval(() => {
-      setProcessingStep(prev => {
-        if (prev < 3) return prev + 1;
-        clearInterval(stepInterval);
-        return prev;
-      });
-    }, 450);
+    const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
     try {
-      let res;
-      if (method === 'railvoy_pay') {
-        // Authorize with RailVoy Pay third-party service
-        res = await axios.post('/api/banking/railvoy-pay-debit', {
-          identifier: rvPayId.trim(),
-          mpin: rvPayMpin.trim(),
-          amount: Number(amount),
-          lockToken: bookingData?.lockToken || '',
-          userEmail: targetEmail,
-          description: `Train #${bookingData?.trainNo || ''} (${bookingData?.travelClass || '3A'}) Booking`
-        });
-      } else {
-        // Net Banking Debit
-        res = await axios.post('/api/banking/deduct', {
-          email: targetEmail,
-          amount: Number(amount),
-          otp: netBankingOtp.trim(),
-          lockToken: bookingData?.lockToken || '',
-          description: `Train #${bookingData?.trainNo || ''} (${bookingData?.travelClass || '3A'}) Booking`
-        });
-      }
+      // Initiate payment API call in background
+      const paymentPromise = (async () => {
+        if (method === 'railvoy_pay') {
+          return await axios.post('/api/banking/railvoy-pay-debit', {
+            identifier: rvPayId.trim(),
+            mpin: rvPayMpin.trim(),
+            amount: Number(amount),
+            lockToken: bookingData?.lockToken || '',
+            userEmail: targetEmail,
+            description: `Train #${bookingData?.trainNo || ''} (${bookingData?.travelClass || '3A'}) Booking`
+          });
+        } else {
+          return await axios.post('/api/banking/deduct', {
+            email: targetEmail,
+            amount: Number(amount),
+            otp: netBankingOtp.trim(),
+            lockToken: bookingData?.lockToken || '',
+            description: `Train #${bookingData?.trainNo || ''} (${bookingData?.travelClass || '3A'}) Booking`
+          });
+        }
+      })();
 
-      clearInterval(stepInterval);
+      // Realistic payment processing step progression (~2.8 - 3.2s)
+      await delay(700);
+      setProcessingStep(2);
+
+      await delay(800);
+      setProcessingStep(3);
+
+      const res = await paymentPromise;
+
+      await delay(700);
+      setProcessingStep(4);
+
+      await delay(500);
       setTxnResult(res.data);
       setStep('success');
 
@@ -149,10 +155,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           amount: Number(amount),
           bankDeduction: { deducted: Number(amount), txnId: res.data.transactionId }
         });
-      }, 1200);
+      }, 1500);
 
     } catch (err: any) {
-      clearInterval(stepInterval);
       setStep('error');
       if (err.response?.status === 401) {
         setErrorMessage(err.response?.data?.error || 'Authorization failed: Incorrect 4-digit MPIN.');
@@ -246,28 +251,75 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
             {/* PROCESSING VIEW */}
             {step === 'processing' && (
-              <div className="space-y-5 text-center py-6">
-                <div className="w-14 h-14 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center mx-auto text-sky-600 animate-spin">
-                  <RefreshCw className="w-7 h-7" />
+              <div className="space-y-5 text-center py-5 px-2">
+                <div className="relative w-16 h-16 mx-auto">
+                  <div className="w-16 h-16 rounded-full bg-sky-50 border-2 border-sky-200 flex items-center justify-center text-sky-600 animate-spin">
+                    <RefreshCw className="w-8 h-8 text-sky-600" />
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <ShieldCheck className="w-5 h-5 text-sky-700" />
+                  </div>
                 </div>
+
                 <div>
-                  <h4 className="text-base font-black text-slate-900">Authorizing Transaction...</h4>
-                  <p className="text-xs text-slate-500 mt-1">Verifying encrypted MPIN with gateway. Please do not refresh.</p>
+                  <h4 className="text-base sm:text-lg font-black text-slate-900">
+                    Processing Railway Payment...
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Secure 256-bit railway transaction protocol • Total: <strong className="text-sky-800 font-mono">₹{amount}</strong>
+                  </p>
                 </div>
-                <div className="space-y-2 max-w-xs mx-auto text-left text-xs">
-                  <div className={`flex items-center space-x-2 ${processingStep >= 1 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Verifying 4-digit MPIN security hash</span>
+
+                {/* Animated Progress Bar */}
+                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
+                  <div
+                    className="bg-gradient-to-r from-sky-500 via-sky-600 to-emerald-500 h-full rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${Math.min(100, processingStep * 25)}%` }}
+                  />
+                </div>
+
+                {/* Loading Menu Steps */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 text-left text-xs max-w-sm mx-auto shadow-inner">
+                  <div className={`flex items-center space-x-3 transition-colors ${processingStep >= 1 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                      processingStep > 1 ? 'bg-emerald-600 text-white' : processingStep === 1 ? 'bg-sky-600 text-white animate-pulse' : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      {processingStep > 1 ? '✓' : '1'}
+                    </div>
+                    <span>Connecting to RailVoy Banking Gateway</span>
                   </div>
-                  <div className={`flex items-center space-x-2 ${processingStep >= 2 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Authenticating guaranteed fare lock</span>
+
+                  <div className={`flex items-center space-x-3 transition-colors ${processingStep >= 2 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                      processingStep > 2 ? 'bg-emerald-600 text-white' : processingStep === 2 ? 'bg-sky-600 text-white animate-pulse' : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      {processingStep > 2 ? '✓' : '2'}
+                    </div>
+                    <span>Verifying 4-digit MPIN security hash &amp; credentials</span>
                   </div>
-                  <div className={`flex items-center space-x-2 ${processingStep >= 3 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Executing railway transaction commit</span>
+
+                  <div className={`flex items-center space-x-3 transition-colors ${processingStep >= 3 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                      processingStep > 3 ? 'bg-emerald-600 text-white' : processingStep === 3 ? 'bg-sky-600 text-white animate-pulse' : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      {processingStep > 3 ? '✓' : '3'}
+                    </div>
+                    <span>Checking dynamic fare guarantee &amp; inventory lock</span>
+                  </div>
+
+                  <div className={`flex items-center space-x-3 transition-colors ${processingStep >= 4 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                      processingStep >= 4 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      {processingStep >= 4 ? '✓' : '4'}
+                    </div>
+                    <span>Executing atomic ledger debit &amp; generating receipt</span>
                   </div>
                 </div>
+
+                <p className="text-[11px] text-amber-700 bg-amber-50 py-2 px-3 rounded-xl border border-amber-200 inline-block font-medium">
+                  🔒 Please do not refresh or close this window while authorization is in progress
+                </p>
               </div>
             )}
 

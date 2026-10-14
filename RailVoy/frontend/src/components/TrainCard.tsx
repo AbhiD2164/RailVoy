@@ -55,7 +55,8 @@ export const TrainCard: React.FC<TrainCardProps> = ({
 
   const baseFinalFare = train.fare?.finalFare || 950;
   const currentMultiplier = availableClasses.find(c => c.code === selectedClass)?.fareMultiplier || 1.0;
-  const computedFare = Math.round(baseFinalFare * currentMultiplier);
+  const fareByClass = (train as any).fareByClass || {};
+  const computedFare = fareByClass[selectedClass] || Math.round(baseFinalFare * currentMultiplier);
 
   const handleClassClick = (clsCode: string) => {
     setSelectedClass(clsCode);
@@ -198,7 +199,7 @@ export const TrainCard: React.FC<TrainCardProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
           {availableClasses.map(cls => {
             const isSelected = selectedClass === cls.code;
-            const fareForClass = Math.round(baseFinalFare * cls.fareMultiplier);
+            const fareForClass = fareByClass[cls.code] || Math.round(baseFinalFare * cls.fareMultiplier);
 
             return (
               <button

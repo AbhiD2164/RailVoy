@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Activity, Clock, MapPin, Gauge, ShieldAlert, ArrowRight,
   CheckCircle2, AlertTriangle, RefreshCw, Search, Train,
-  List, QrCode, FileText, Building2, ChevronRight, Sparkles, Check
+  List, QrCode, FileText, Building2, ChevronRight, Sparkles, Check, Navigation
 } from 'lucide-react';
 import axios from 'axios';
 import { LiveStatus } from '../types';
@@ -33,11 +33,60 @@ export const LiveTracker: React.FC<LiveTrackerProps> = ({
   const [deviceLocation, setDeviceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [transferMessage, setTransferMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Station Live Board
+  // Station Live Board & Live Station Tracker (Where Is My Train)
   const [stationCode, setStationCode] = useState('');
   const [stationBoardData, setStationBoardData] = useState<any>(null);
   const [stationLoading, setStationLoading] = useState(false);
   const [stationError, setStationError] = useState('');
+  const [stationDirectionFilter, setStationDirectionFilter] = useState<'all' | 'arrivals' | 'departures'>('all');
+  const [stationWindowFilter, setStationWindowFilter] = useState<number>(4);
+  const [locatingGps, setLocatingGps] = useState(false);
+  const [gpsStationNotice, setGpsStationNotice] = useState('');
+
+  const handleTrackLiveLocation = () => {
+    if (!navigator.geolocation) {
+      setStationError('GPS Geolocation is not supported by your current browser.');
+      return;
+    }
+    setLocatingGps(true);
+    setStationError('');
+    setGpsStationNotice('Acquiring real-time GPS coordinates...');
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setDeviceLocation({ latitude, longitude });
+
+        // Match closest station from station list or representative hub
+        let best = stationList[0] || { stationCode: 'NDLS', stationName: 'New Delhi' };
+        if (stationList.length > 0) {
+          let minDistance = Infinity;
+          for (const s of stationList) {
+            if (s.latitude && s.longitude) {
+              const d = Math.hypot(s.latitude - latitude, s.longitude - longitude);
+              if (d < minDistance) {
+                minDistance = d;
+                best = s;
+              }
+            }
+          }
+        }
+
+        setStationCode(best.stationCode);
+        setGpsStationNotice(`GPS Locked: Located nearest station ${best.stationName} (${best.stationCode})`);
+        setLocatingGps(false);
+        fetchStationBoard(best.stationCode);
+      },
+      (err) => {
+        setLocatingGps(false);
+        setGpsStationNotice('');
+        const fallback = stationList[0]?.stationCode || 'NDLS';
+        setStationCode(fallback);
+        fetchStationBoard(fallback);
+      },
+      { enableHighAccuracy: true, timeout: 6000 }
+    );
+  };
 
   // PNR Status
   const [pnrInput, setPnrInput] = useState(activePnr || '');
@@ -303,7 +352,7 @@ export const LiveTracker: React.FC<LiveTrackerProps> = ({
           </button>
           <button onClick={() => setActiveTrackerTab('stationBoard')} className={tabButtonClass('stationBoard')}>
             <Building2 className="w-4 h-4" />
-            <span>Station Live Board</span>
+            <span>Live Station</span>
           </button>
           <button onClick={() => setActiveTrackerTab('pnrStatus')} className={tabButtonClass('pnrStatus')}>
             <FileText className="w-4 h-4" />
@@ -527,46 +576,169 @@ export const LiveTracker: React.FC<LiveTrackerProps> = ({
         </div>
       )}
 
-      {/* TAB: Station Live Board */}
+      {/* TAB: Live Station (Where Is My Train style) */}
       {activeTrackerTab === 'stationBoard' && (
         <div className="space-y-5">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-3">
-            <div className="flex items-center space-x-2 flex-1">
-              <MapPin className="w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={stationCode}
-                onChange={(e) => setStationCode(e.target.value.toUpperCase())}
-                placeholder="Station Code (e.g. NDLS, SBC, BPL, INDB)"
-                className="flex-1 bg-transparent text-sm text-slate-900 font-semibold placeholder-slate-400 outline-none uppercase font-mono"
-                maxLength={6}
-              />
+          {/* Live Station Search & Location Card */}
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
+                  <Building2 className="w-5 h-5 text-sky-700" />
+                  <span>Live Station Tracker (Where Is My Train)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Track upcoming train traffic, real-time arrivals, departures, and delays for any station.
+                </p>
+              </div>
+              <span className="text-[10px] text-emerald-800 font-extrabold border border-emerald-300 bg-emerald-50 px-2.5 py-1 rounded-full flex items-center space-x-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span>NTES REAL-TIME FEED</span>
+              </span>
             </div>
-            <button
-              onClick={() => fetchStationBoard(stationCode)}
-              className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl flex items-center space-x-1.5 shadow-sm transition-all"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>Get Board</span>
-            </button>
-          </div>
 
-          {/* Dynamic stations quick pick */}
-          <div className="flex flex-wrap gap-2">
-            <span className="text-[11px] text-slate-500 font-bold self-center">Quick Stations:</span>
-            {stationList.slice(0, 8).map(s => (
-              <button
-                key={s.stationCode}
-                onClick={() => { setStationCode(s.stationCode); fetchStationBoard(s.stationCode); }}
-                className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[11px] text-sky-800 font-bold transition-colors shadow-2xs"
-              >
-                {s.stationCode} — {s.stationName}
-              </button>
-            ))}
+            {/* Prominent Live Station Input */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-black text-slate-800 uppercase tracking-wider">
+                Live Station
+              </label>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex items-center space-x-2 flex-1 min-w-[220px] bg-slate-50 border border-slate-300 rounded-2xl px-3.5 py-2.5 focus-within:border-sky-500 focus-within:bg-white transition-all">
+                  <MapPin className="w-4 h-4 text-sky-600 flex-shrink-0" />
+                  <input
+                    type="text"
+                    value={stationCode}
+                    onChange={(e) => setStationCode(e.target.value.toUpperCase())}
+                    placeholder="Enter Live Station Name or Code (e.g. NDLS, SBC, BPL, INDB, CSMT)..."
+                    className="flex-1 bg-transparent text-sm text-slate-900 font-bold placeholder-slate-400 outline-none uppercase font-mono"
+                    maxLength={10}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') fetchStationBoard(stationCode);
+                    }}
+                  />
+                </div>
+
+                {/* Track Station Button */}
+                <button
+                  type="button"
+                  onClick={() => fetchStationBoard(stationCode)}
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs rounded-2xl flex items-center space-x-1.5 shadow-sm transition-all hover:scale-[1.02] cursor-pointer"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Track Station</span>
+                </button>
+
+                {/* Track Live GPS Location Button */}
+                <button
+                  type="button"
+                  onClick={handleTrackLiveLocation}
+                  disabled={locatingGps}
+                  className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-xs rounded-2xl flex items-center space-x-1.5 transition-all shadow-2xs hover:scale-[1.02] cursor-pointer disabled:opacity-50"
+                  title="Detect my current location via GPS and find the nearest railway station"
+                >
+                  <Navigation className={`w-3.5 h-3.5 text-emerald-600 ${locatingGps ? 'animate-spin' : ''}`} />
+                  <span>{locatingGps ? 'Acquiring GPS...' : 'Track Live Location'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* GPS Notice Banner */}
+            {gpsStationNotice && (
+              <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>{gpsStationNotice}</span>
+              </div>
+            )}
+
+            {/* Quick Stations Pills */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[11px] text-slate-500 font-bold mr-1">Popular Stations:</span>
+              {(stationList.length > 0 ? stationList.slice(0, 8) : [
+                { stationCode: 'NDLS', stationName: 'New Delhi' },
+                { stationCode: 'CSMT', stationName: 'Mumbai CSMT' },
+                { stationCode: 'SBC', stationName: 'Bengaluru' },
+                { stationCode: 'BPL', stationName: 'Bhopal' },
+                { stationCode: 'HWH', stationName: 'Howrah' },
+                { stationCode: 'MAS', stationName: 'Chennai' },
+                { stationCode: 'INDB', stationName: 'Indore' }
+              ]).map(s => (
+                <button
+                  key={s.stationCode}
+                  onClick={() => { setStationCode(s.stationCode); fetchStationBoard(s.stationCode); }}
+                  className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold transition-all ${
+                    stationCode === s.stationCode
+                      ? 'bg-sky-700 text-white border-sky-800 shadow-xs'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  {s.stationCode} <span className="text-[10px] font-normal opacity-80 font-sans">({s.stationName})</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Direction & Time Window Filters (Where is my train style) */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              {/* Traffic Direction Toggle */}
+              <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setStationDirectionFilter('all')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                    stationDirectionFilter === 'all'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All Traffic
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStationDirectionFilter('arrivals')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                    stationDirectionFilter === 'arrivals'
+                      ? 'bg-white text-emerald-800 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Arrivals Only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStationDirectionFilter('departures')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                    stationDirectionFilter === 'departures'
+                      ? 'bg-white text-sky-800 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Departures Only
+                </button>
+              </div>
+
+              {/* Time Window Selector */}
+              <div className="flex items-center space-x-1.5 text-xs text-slate-600 font-semibold">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Window:</span>
+                {[2, 4, 8, 24].map((hours) => (
+                  <button
+                    key={hours}
+                    type="button"
+                    onClick={() => setStationWindowFilter(hours)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                      stationWindowFilter === hours
+                        ? 'bg-sky-600 text-white'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {hours === 24 ? 'All Day' : `${hours}h`}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {stationError && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-semibold flex items-center space-x-2 shadow-2xs">
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-semibold flex items-center space-x-2 shadow-2xs">
               <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
               <span>{stationError}</span>
             </div>
@@ -575,58 +747,123 @@ export const LiveTracker: React.FC<LiveTrackerProps> = ({
           {stationLoading && (
             <div className="bg-white p-12 text-center rounded-3xl border border-slate-200 shadow-sm">
               <div className="w-10 h-10 border-3 border-sky-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-xs text-slate-500 font-semibold">Loading station departures &amp; arrivals board...</p>
+              <p className="text-xs text-slate-500 font-semibold">Fetching upcoming live train traffic and platform allocations...</p>
             </div>
           )}
 
-          {stationBoardData && !stationLoading && (
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between mb-5 border-b border-slate-200 pb-3">
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Live Station Board — {stationBoardData.stationCode}</h3>
-                  <p className="text-xs text-slate-500 font-medium">{stationBoardData.totalTrains} trains scheduled through this station</p>
-                </div>
-                <span className="text-[10px] text-emerald-800 font-bold border border-emerald-300 bg-emerald-50 px-2.5 py-1 rounded-lg">● LIVE BOARD</span>
-              </div>
+          {stationBoardData && !stationLoading && (() => {
+            // Apply direction filter
+            let filteredTrains = (stationBoardData.trains || []).filter((t: any) => {
+              if (stationDirectionFilter === 'arrivals') {
+                return t.isTerminating || (t.scheduledArrival && t.scheduledArrival !== '—');
+              }
+              if (stationDirectionFilter === 'departures') {
+                return t.isOriginating || (t.scheduledDeparture && t.scheduledDeparture !== '—');
+              }
+              return true;
+            });
 
-              {stationBoardData.trains.length === 0 ? (
-                <p className="text-slate-500 text-xs text-center py-6">No trains found for this station code.</p>
-              ) : (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-7 gap-2 px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    <div className="col-span-2">Train</div>
-                    <div>From</div>
-                    <div>To</div>
-                    <div className="text-center">Arr</div>
-                    <div className="text-center">Dep</div>
-                    <div className="text-center">Status</div>
+            return (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">
+                      Live Traffic at {stationBoardData.stationCode}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Showing {filteredTrains.length} of {stationBoardData.totalTrains} scheduled trains • {stationDirectionFilter === 'all' ? 'Arrivals & Departures' : stationDirectionFilter.toUpperCase()}
+                    </p>
                   </div>
-                  {stationBoardData.trains.map((t: any, idx: number) => (
-                    <div key={idx} className="grid grid-cols-7 gap-2 items-center p-3 bg-slate-50/80 rounded-xl border border-slate-200 text-xs hover:border-sky-300 transition-colors">
-                      <div className="col-span-2">
-                        <p className="font-black text-slate-900 leading-tight">{t.trainName}</p>
-                        <p className="font-mono text-sky-700 text-[10px]">#{t.trainNo}</p>
-                      </div>
-                      <div className="text-slate-600 text-[11px] font-medium">{t.source}</div>
-                      <div className="text-slate-600 text-[11px] font-medium">{t.destination}</div>
-                      <div className="text-center font-mono text-slate-700 font-semibold">{t.scheduledArrival || '—'}</div>
-                      <div className="text-center font-mono text-slate-700 font-semibold">{t.scheduledDeparture || '—'}</div>
-                      <div className="text-center">
-                        <span className={`px-2 py-0.5 rounded-lg font-bold text-[10px] ${
-                          t.delayMinutes === 0
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border border-rose-200'
-                        }`}>
-                          {t.status}
-                        </span>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Pf. {t.platformNo}</p>
-                      </div>
-                    </div>
-                  ))}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => fetchStationBoard(stationCode)}
+                      className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors"
+                      title="Refresh board"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                    <span className="text-[10px] text-emerald-800 font-extrabold border border-emerald-300 bg-emerald-50 px-2.5 py-1 rounded-lg">
+                      ● LIVE TRAFFIC
+                    </span>
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+
+                {filteredTrains.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-slate-500 text-xs font-semibold">No trains match your direction filter ({stationDirectionFilter}) for this station.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {/* Header Row */}
+                    <div className="grid grid-cols-12 gap-2 px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <div className="col-span-4 sm:col-span-3">Train Details</div>
+                      <div className="col-span-3 sm:col-span-3">Route</div>
+                      <div className="col-span-2 text-center">Scheduled</div>
+                      <div className="col-span-2 text-center">Live Expected</div>
+                      <div className="col-span-1 sm:col-span-2 text-center">Platform &amp; Status</div>
+                    </div>
+
+                    {filteredTrains.map((t: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="grid grid-cols-12 gap-2 items-center p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200 text-xs hover:border-sky-300 hover:bg-sky-50/20 transition-all"
+                      >
+                        {/* Train details */}
+                        <div className="col-span-4 sm:col-span-3">
+                          <p className="font-black text-slate-900 leading-tight">{t.trainName}</p>
+                          <div className="flex items-center space-x-1.5 mt-0.5">
+                            <span className="font-mono text-sky-700 text-[10px] font-extrabold">#{t.trainNo}</span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-semibold">{t.trainType || 'Superfast'}</span>
+                          </div>
+                        </div>
+
+                        {/* Route */}
+                        <div className="col-span-3 sm:col-span-3 text-[11px]">
+                          <span className="font-bold text-slate-800">{t.source}</span>
+                          <span className="text-slate-400 mx-1">&rarr;</span>
+                          <span className="font-bold text-slate-800">{t.destination}</span>
+                          {t.isOriginating && <span className="block text-[9px] font-bold text-sky-700 uppercase">Starts Here</span>}
+                          {t.isTerminating && <span className="block text-[9px] font-bold text-purple-700 uppercase">Terminates Here</span>}
+                        </div>
+
+                        {/* Scheduled */}
+                        <div className="col-span-2 text-center font-mono text-[11px] text-slate-600 font-medium">
+                          <div><span className="text-[9px] text-slate-400 uppercase">A:</span> {t.scheduledArrival || '—'}</div>
+                          <div><span className="text-[9px] text-slate-400 uppercase">D:</span> {t.scheduledDeparture || '—'}</div>
+                        </div>
+
+                        {/* Live Expected */}
+                        <div className="col-span-2 text-center font-mono text-xs font-bold">
+                          <div className={t.delayMinutes > 0 ? 'text-amber-700' : 'text-emerald-700'}>
+                            <span className="text-[9px] text-slate-400 uppercase font-sans">Live: </span>
+                            {t.expectedTime || t.expectedDeparture || t.scheduledDeparture || '—'}
+                          </div>
+                          {t.delayMinutes > 0 && (
+                            <span className="text-[10px] text-rose-600 block font-semibold">+{t.delayMinutes}m delay</span>
+                          )}
+                        </div>
+
+                        {/* Platform & Status */}
+                        <div className="col-span-1 sm:col-span-2 text-center">
+                          <div className="font-bold text-slate-800 text-xs">
+                            Pf. <span className="text-sky-700 font-extrabold text-sm">{t.platformNo}</span>
+                          </div>
+                          <span className={`inline-block px-2 py-0.5 rounded-lg font-extrabold text-[10px] mt-0.5 ${
+                            t.delayMinutes === 0
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}>
+                            {t.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
