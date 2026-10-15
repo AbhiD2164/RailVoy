@@ -276,19 +276,24 @@ export const App: React.FC = () => {
       // Auto-refund if payment was already deducted
       if (paymentResult?.bankDeduction?.deducted && bookingFormData?.userEmail) {
         try {
-          await axios.post('/api/banking/refund', {
+          const refundRes = await axios.post('/api/banking/refund', {
             email: bookingFormData.userEmail,
             amount: paymentResult.bankDeduction.deducted,
+            // Pass wallet identifier so the gateway can locate the exact wallet to credit
+            walletIdentifier: paymentResult.identifier || bookingFormData.payWalletId || bookingFormData.userEmail,
             reason: 'Booking creation failed — automatic refund'
           });
+          const refundMsg = refundRes.data?.walletCredited
+            ? `₹${paymentResult.bankDeduction.deducted} has been automatically refunded to your RailVoy Pay wallet.`
+            : `Your refund of ₹${paymentResult.bankDeduction.deducted} is being processed and will appear shortly.`;
           setBookingError(
-            `Booking failed and ₹${paymentResult.bankDeduction.deducted} has been automatically refunded to your account. ` +
+            `Booking could not be confirmed. ${refundMsg} ` +
             (err.response?.data?.error || 'Please try again.')
           );
         } catch (refundErr) {
           setBookingError(
             `Booking failed. Refund of ₹${paymentResult.bankDeduction.deducted} is being processed. ` +
-            'Please contact support if not credited within 24 hours.'
+            'Please check your RailVoy Pay balance or contact support if not credited within 24 hours.'
           );
         }
       } else {

@@ -347,21 +347,45 @@ router.get('/transactions', authenticatePayUser, (req, res) => {
 
 // 7. Refund endpoint
 router.post('/refund', (req, res) => {
-  const { userId, amount, originalTxnId, reason } = req.body;
-  if (!userId || !amount) {
-    return res.status(400).json({ error: 'User ID and refund amount required' });
+  const { userId, identifier, amount, originalTxnId, reason, refundId } = req.body;
+  const resolveId = userId || identifier;
+  if (!resolveId || !amount) {
+    return res.status(400).json({ error: 'User ID/identifier and refund amount required' });
   }
 
-  const user = usersMap.get(userId);
-  if (!user) return res.status(404).json({ error: 'User wallet not found for refund' });
-
   const refundAmt = parseFloat(amount);
-  user.balance += refundAmt;
+  if (isNaN(refundAmt) || refundAmt <= 0) {
+    return res.status(400).json({ error: 'Invalid refund amount' });
+  }
 
-  const refundTxnId = `REF_RVPAY_${Date.now()}`;
+  // Resolve user by userId, UPI ID, phone, or email username prefix
+  const cleanId = String(resolveId).toLowerCase().trim();
+  let user = usersMap.get(resolveId) || usersMap.get(resolveId.toUpperCase());
+  if (!user) {
+    for (const u of usersMap.values()) {
+      if (
+        (u.userId && u.userId.toLowerCase() === cleanId) ||
+        (u.upiId && u.upiId.toLowerCase() === cleanId) ||
+        (u.phone && u.phone === cleanId.replace(/\D/g, '')) ||
+        (u.upiId && cleanId.includes('@') && u.upiId.toLowerCase().includes(cleanId.split('@')[0]))
+      ) {
+        user = u;
+        break;
+      }
+    }
+  }
+
+  if (!user) {
+    return res.status(404).json({ error: 'Wallet not found for the given identifier. Refund could not be processed by microservice.' });
+  }
+
+  user.balance = parseFloat(((user.balance || 0) + refundAmt).toFixed(2));
+
+  const refundTxnId = refundId || `REF_RVPAY_${Date.now()}`;
   transactions.push({
     txnId: refundTxnId,
     userId: user.userId,
+    upiId: user.upiId,
     amount: refundAmt,
     type: 'CREDIT',
     merchantRef: originalTxnId || 'Auto Refund',
@@ -371,7 +395,8 @@ router.post('/refund', (req, res) => {
   });
 
   saveData();
-  res.json({ success: true, refundTxnId, message: `₹${refundAmt} refunded to wallet.` });
+  console.log(`[RailVoy Pay] REFUND ₹${refundAmt} credited to wallet ${user.userId} (${user.upiId || user.phone}). New balance: ₹${user.balance}`);
+  res.json({ success: true, refundTxnId, newBalance: user.balance, message: `₹${refundAmt} refunded to wallet.` });
 });
 
 module.exports = router;

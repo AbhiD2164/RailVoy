@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const Booking = require('../models/Booking');
 const Train = require('../models/Train');
 const { Coupon, inMemoryCoupons } = require('../models/Coupon');
@@ -414,7 +415,6 @@ router.post('/create', optionalAuth, async (req, res) => {
 
     // Email ↔ Accounts association check (non-blocking in dev)
     try {
-      const axios = require('axios');
       await axios.get(`http://localhost:4002/api/accounts/verify-id?email=${encodeURIComponent(bookingOwnerEmail)}`, { timeout: 2000 });
     } catch (accErr) {
       // Service may be down — log only, do not block booking in development
@@ -497,7 +497,7 @@ router.post('/create', optionalAuth, async (req, res) => {
     let bookingId = null;
     try {
       if (!getIsFallback()) {
-        const doc = new Booking({ ...newBooking, status: 'PENDING' });
+        const doc = new Booking({ ...newBooking, status: 'Pending' });
         const pendingDoc = await doc.save();
         bookingId = pendingDoc._id;
         // Phase commit: update to real status

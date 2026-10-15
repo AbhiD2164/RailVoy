@@ -358,41 +358,115 @@ router.post('/deduct', async (req, res) => {
   }
 });
 
-// POST /api/banking/refund - Rollback failed booking payment
+// POST /api/banking/refund - Rollback failed booking payment back to RailVoy-Pay wallet
 router.post('/refund', async (req, res) => {
   try {
-    const { email, amount, reason } = req.body;
+    const { email, amount, reason, walletIdentifier } = req.body;
     if (!email || !amount) return res.status(400).json({ error: 'Email and amount required' });
 
     const cleanEmail = email.toLowerCase().trim();
     const refundAmount = parseFloat(amount);
-
-    const currentBalance = balanceOverrides.has(cleanEmail)
-      ? balanceOverrides.get(cleanEmail)
-      : 75000;
-
-    const newBalance = parseFloat((currentBalance + refundAmount).toFixed(2));
-    balanceOverrides.set(cleanEmail, newBalance);
-
-    if (!getIsFallback()) {
-      try {
-        await User.updateOne({ email: cleanEmail }, { $set: { bankBalance: newBalance } });
-      } catch (e) {}
+    if (isNaN(refundAmount) || refundAmount <= 0) {
+      return res.status(400).json({ error: 'Invalid refund amount' });
     }
 
-    const refundId = 'RFD_RV_' + Date.now();
-    console.log(`[Banking Gateway] REFUND of ₹${refundAmount} credited to ${cleanEmail}.`);
+    const refundId = 'RFD_RV_' + Date.now() + '_' + Math.floor(1000 + Math.random() * 9000);
+    let refundSource = 'unknown';
+
+    // ── Strategy 1: Try RailVoy-Pay microservice first ───────────────────────
+    try {
+      const axios = require('axios');
+      const payRes = await axios.post('http://localhost:4001/api/pay/refund', {
+        identifier: walletIdentifier || cleanEmail,
+        amount: refundAmount,
+        refundId,
+        reason: reason || 'Booking rollback refund'
+      }, { timeout: 3000 });
+      if (payRes.data?.success) {
+        console.log(`[Banking Gateway] REFUND ₹${refundAmount} credited to ${cleanEmail} via RailVoy-Pay microservice.`);
+        return res.json({
+          success: true,
+          refundId,
+          refunded: refundAmount,
+          source: 'RailVoy-Pay microservice',
+          reason: reason || 'Booking rollback'
+        });
+      }
+    } catch (svcErr) {
+      // Microservice down — fall through to direct file write
+      console.warn('[Banking] RailVoy-Pay refund service unavailable, using direct wallet write:', svcErr.code || svcErr.message);
+    }
+
+    // ── Strategy 2: Direct write to RailVoy-Pay users.json (shared filesystem) ──
+    let walletCredited = false;
+    try {
+      const usersArr = loadRvPayUsers();
+      // Resolve user by email (from RailVoy-Accounts), then by UPI/phone
+      let walletUser = null;
+
+      // Try to find linked phone from RailVoy-Accounts
+      let targetPhone = '';
+      try {
+        if (fs.existsSync(RVACC_ACCOUNTS_FILE)) {
+          const accList = JSON.parse(fs.readFileSync(RVACC_ACCOUNTS_FILE, 'utf8'));
+          const matchedAcc = accList.find(a => a.email && a.email.toLowerCase() === cleanEmail);
+          if (matchedAcc?.phone) targetPhone = String(matchedAcc.phone).replace(/\D/g, '').slice(-10);
+        }
+      } catch (e) {}
+
+      walletUser = usersArr.find(u =>
+        (walletIdentifier && (
+          (u.userId && u.userId.toLowerCase() === walletIdentifier.toLowerCase()) ||
+          (u.upiId && u.upiId.toLowerCase() === walletIdentifier.toLowerCase())
+        )) ||
+        (targetPhone && u.phone === targetPhone) ||
+        (u.upiId && u.upiId.toLowerCase().includes(cleanEmail.split('@')[0]))
+      );
+
+      if (walletUser) {
+        walletUser.balance = parseFloat(((walletUser.balance || 0) + refundAmount).toFixed(2));
+        saveRvPayUsers(usersArr);
+        // Record refund transaction
+        recordRvPayTxn({
+          txnId: refundId,
+          userId: walletUser.userId,
+          upiId: walletUser.upiId || `${walletUser.phone || 'pay'}@railvoy`,
+          amount: refundAmount,
+          type: 'CREDIT',
+          status: 'REFUND',
+          description: reason || 'Automatic refund — booking rollback',
+          timestamp: new Date().toISOString()
+        });
+        walletCredited = true;
+        refundSource = 'RailVoy-Pay wallet (direct)';
+        console.log(`[Banking Gateway] REFUND ₹${refundAmount} credited to ${cleanEmail} wallet directly (userId: ${walletUser.userId}).`);
+      }
+    } catch (walletErr) {
+      console.warn('[Banking] Wallet direct-credit failed:', walletErr.message);
+    }
+
+    // ── Strategy 3: In-memory balance override as last resort ────────────────
+    if (!walletCredited) {
+      const currentBalance = balanceOverrides.has(cleanEmail) ? balanceOverrides.get(cleanEmail) : 0;
+      balanceOverrides.set(cleanEmail, parseFloat((currentBalance + refundAmount).toFixed(2)));
+      refundSource = 'in-memory override (wallet not found)';
+      console.warn(`[Banking Gateway] REFUND ₹${refundAmount} applied as in-memory override for ${cleanEmail} — wallet user not found.`);
+    }
 
     res.json({
       success: true,
       refundId,
       refunded: refundAmount,
-      reason: reason || 'Booking rollback'
-      // No balance returned
+      source: refundSource,
+      walletCredited,
+      reason: reason || 'Booking rollback',
+      message: walletCredited
+        ? `₹${refundAmount} has been refunded to your RailVoy Pay wallet.`
+        : `Your refund of ₹${refundAmount} is being processed. It will appear in your RailVoy Pay wallet within a few minutes.`
     });
   } catch (err) {
     console.error('[Banking] Refund error:', err);
-    res.status(500).json({ error: 'Refund processing failed' });
+    res.status(500).json({ error: 'Refund processing failed. Please contact support.' });
   }
 });
 

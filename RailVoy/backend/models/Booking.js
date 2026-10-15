@@ -54,7 +54,7 @@ const bookingSchema = new mongoose.Schema({
     paidAt:       { type: Date,   default: Date.now }
   },
 
-  status:                 { type: String, enum: ['Confirmed', 'RAC', 'Waitlisted', 'Cancelled', 'Transferred'], default: 'Confirmed' },
+  status:                 { type: String, enum: ['Confirmed', 'RAC', 'Waitlisted', 'Cancelled', 'Transferred', 'Pending'], default: 'Confirmed' },
   waitlistPosition:       { type: Number, default: 0 },
   confirmationProbability:{ type: Number, default: 100 },
   explanationReason:      { type: String, default: '' },
