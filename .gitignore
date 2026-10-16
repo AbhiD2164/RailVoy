@@ -1,38 +1,49 @@
-# Dependency directories (all apps)
+# ── Dependency directories (ALL nesting levels) ────────────────────────────────
 node_modules/
-*/node_modules/
-*/*/node_modules/
+**/node_modules/
 
-# Build outputs
+# ── Build / compile outputs ────────────────────────────────────────────────────
 dist/
 build/
-*/dist/
-*/*/dist/
+**/dist/
+**/build/
 
-# Python cache & virtualenvs
+# ── Python cache & virtualenvs ─────────────────────────────────────────────────
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 .venv/
 venv/
-*/.venv/
-*/__pycache__/
-*/*/__pycache__/
+**/.venv/
 
-# Environment variables & secrets
+# ── Environment variables & secrets (NEVER commit keys) ───────────────────────
 .env
 .env.local
-*.env
+.env.production
+.env.*.local
+**/.env
+**/.env.local
+**/.env.production
 
-# Large dataset files (if intended to ignore)
+# ── Runtime data files (wallet balances, live transaction logs) ────────────────
+# These are managed at runtime by RailVoy-Pay & RailVoy-Accounts services.
+# Seed files (accounts.json, users.json) live inside each service's repo.
+RailVoy-Pay/backend/data/users.json
+RailVoy-Pay/backend/data/transactions.json
+RailVoy-Accounts/backend/data/accounts.json
+
+# ── Large dataset files ────────────────────────────────────────────────────────
+RailVoy/dataset/
 dataset/
-*/dataset/
 
-# Logs & OS artifacts
+# ── Logs ───────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# ── OS & editor artifacts ─────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 .idea/
